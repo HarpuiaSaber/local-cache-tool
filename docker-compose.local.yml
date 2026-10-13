@@ -1,0 +1,119 @@
+services:
+  kafka-init:
+    image: apache/kafka:latest
+    user: "0:0"
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+          cat > /tmp/kraft-init.properties <<'EOF'
+          process.roles=broker,controller
+          node.id=1
+          controller.quorum.voters=1@kafka:29093
+          controller.listener.names=CONTROLLER
+          listeners=INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9093,CONTROLLER://0.0.0.0:29093
+          advertised.listeners=INTERNAL://kafka:29092,EXTERNAL://localhost:9093
+          listener.security.protocol.map=INTERNAL:SASL_PLAINTEXT,EXTERNAL:SASL_PLAINTEXT,CONTROLLER:PLAINTEXT
+          inter.broker.listener.name=INTERNAL
+          log.dirs=/tmp/kraft-combined-logs
+          sasl.enabled.mechanisms=SCRAM-SHA-512
+          sasl.mechanism.inter.broker.protocol=SCRAM-SHA-512
+          EOF
+          /opt/kafka/bin/kafka-storage.sh format --ignore-formatted \
+            --cluster-id MkU3OEVBNTcwNTJENDM2Qk \
+            --config /tmp/kraft-init.properties \
+            --add-scram 'SCRAM-SHA-512=[name=admin,password=admin-secret]' \
+            --add-scram 'SCRAM-SHA-512=[name=alice,password=alice-secret]'
+    volumes:
+      - kafka-data:/tmp/kraft-combined-logs
+
+  kafka:
+    image: apache/kafka:latest
+    user: "0:0"
+    container_name: kafka
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    ports:
+      - "9093:9093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9093,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SASL_PLAINTEXT,EXTERNAL:SASL_PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-512
+      KAFKA_OPTS: -Djava.security.auth.login.config=/tmp/kafka_server_jaas.conf
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    configs:
+      - source: broker-jaas
+        target: /tmp/kafka_server_jaas.conf
+    volumes:
+      - kafka-data:/tmp/kraft-combined-logs
+
+  init-kafka-topics:
+    image: apache/kafka:latest
+    depends_on:
+      kafka:
+        condition: service_started
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+          cat > /tmp/client-sasl.properties <<'EOF'
+          security.protocol=SASL_PLAINTEXT
+          sasl.mechanism=SCRAM-SHA-512
+          sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="admin" password="admin-secret";
+          EOF
+          attempts=0
+          until /opt/kafka/bin/kafka-topics.sh --list \
+            --bootstrap-server kafka:29092 \
+            --command-config /tmp/client-sasl.properties >/dev/null 2>&1; do
+            attempts=$$((attempts + 1))
+            if [ "$$attempts" -ge 60 ]; then
+              echo 'Kafka did not accept the admin SCRAM login within 120 seconds' >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          /opt/kafka/bin/kafka-topics.sh --create \
+            --bootstrap-server kafka:29092 \
+            --command-config /tmp/client-sasl.properties \
+            --replication-factor 1 \
+            --partitions 3 \
+            --topic my-awesome-topic \
+            --if-not-exists
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      init-kafka-topics:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: sasl-scram-cluster-9093
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_MECHANISM: SCRAM-SHA-512
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.scram.ScramLoginModule required username="admin" password="admin-secret";'
+
+configs:
+  broker-jaas:
+    content: |
+      KafkaServer {
+        org.apache.kafka.common.security.scram.ScramLoginModule required
+        username="admin"
+        password="admin-secret";
+      };
+
+volumes:
+  kafka-data:

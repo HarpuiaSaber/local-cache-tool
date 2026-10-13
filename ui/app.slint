@@ -1,0 +1,504 @@
+import { Button, ComboBox, LineEdit, ScrollView, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export struct UiField {
+    name: string,
+    kind: string,
+    value: string,
+    options: [string],
+}
+
+export component AppWindow inherits Window {
+    icon: @image-url("../assets/kafka-message-tool.png");
+    title: "Công cụ gửi Kafka";
+    width: 820px;
+    height: 780px;
+    background: #eaf4ff;
+
+    in-out property <string> broker: "localhost:9093";
+    in-out property <string> username;
+    in-out property <string> password;
+    in-out property <[string]> services;
+    in-out property <string> selected-service;
+    in-out property <string> service-topic;
+    in-out property <string> send-mode: "Theo mẫu";
+    in-out property <string> manual-topic;
+    in-out property <string> manual-key;
+    in-out property <string> manual-payload;
+    in-out property <[string]> tables;
+    in-out property <string> selected-target;
+    in-out property <string> selected-table;
+    in-out property <string> action: "RELOAD";
+    in-out property <[UiField]> fields;
+    in-out property <string> preview;
+    in-out property <string> status;
+    in-out property <string> field-error-tooltip;
+    in-out property <bool> busy: false;
+    in-out property <bool> connected: false;
+    in-out property <bool> notice-visible: false;
+    in-out property <bool> notice-success: false;
+    in-out property <string> notice-title;
+    in-out property <string> notice-message;
+
+    callback service-selected(string);
+    callback table-selected(string);
+    callback action-selected(string);
+    callback field-value-changed(int, string);
+    callback field-input-accepted(int, string) -> bool;
+    callback field-input-error-requested(int, string) -> string;
+    callback test-connection-requested();
+    callback change-connection-requested();
+    callback json-beauty-requested();
+    callback copy-requested(string);
+    callback send-requested();
+    callback close-notice-requested();
+
+    VerticalBox {
+        padding: 18px;
+        spacing: 12px;
+
+        Text {
+            text: "Công cụ gửi Kafka";
+            font-size: 26px;
+            font-weight: 700;
+            color: #123a63;
+        }
+        Text {
+            text: "Soạn message, kiểm tra kết nối và gửi đến Kafka.";
+            color: #52718f;
+        }
+
+        ScrollView {
+            VerticalBox {
+                spacing: 12px;
+
+                Rectangle {
+                    height: root.connected ? 78px : 230px;
+                    background: #ffffff;
+                    border-color: #b6d8f5;
+                    border-width: 1px;
+                    border-radius: 10px;
+                    VerticalBox {
+                        width: parent.width;
+                        height: parent.height;
+                        padding: 14px;
+                        spacing: 8px;
+                        HorizontalBox {
+                            height: 32px;
+                            Text { text: "Kết nối Kafka"; height: 32px; font-size: 18px; font-weight: 600; color: #123a63; vertical-alignment: center; }
+                            Text { text: root.connected ? "Đã kết nối" : "Chưa kết nối"; height: 32px; color: root.connected ? #1677d2 : #d97706; horizontal-stretch: 1; horizontal-alignment: right; vertical-alignment: center; }
+                            Button {
+                                visible: root.connected;
+                                text: "Kiểm tra";
+                                width: 88px;
+                                height: 32px;
+                                enabled: !root.busy;
+                                clicked => { root.test-connection-requested(); }
+                            }
+                            Button {
+                                visible: root.connected;
+                                text: "Đổi";
+                                width: 82px;
+                                height: 32px;
+                                enabled: !root.busy;
+                                clicked => { root.change-connection-requested(); }
+                            }
+                        }
+                        VerticalBox {
+                            visible: !root.connected;
+                            height: root.connected ? 0px : 112px;
+                            spacing: 6px;
+                            HorizontalBox {
+                                height: 32px;
+                                spacing: 8px;
+                                cross-axis-alignment: center;
+                                Text { text: "Broker"; width: 95px; color: #355b7d; vertical-alignment: center; }
+                                LineEdit {
+                                    text <=> root.broker;
+                                    placeholder-text: "ip:port, ip:port";
+                                    horizontal-alignment: left;
+                                }
+                            }
+                            HorizontalBox {
+                                height: 32px;
+                                spacing: 8px;
+                                cross-axis-alignment: center;
+                                Text { text: "Tài khoản"; width: 95px; color: #355b7d; vertical-alignment: center; }
+                                LineEdit { text <=> root.username; horizontal-alignment: left; }
+                            }
+                            HorizontalBox {
+                                height: 32px;
+                                spacing: 8px;
+                                cross-axis-alignment: center;
+                                Text { text: "Mật khẩu"; width: 95px; color: #355b7d; vertical-alignment: center; }
+                                LineEdit { text <=> root.password; input-type: InputType.password; horizontal-alignment: left; }
+                            }
+                        }
+                        HorizontalBox {
+                            visible: !root.connected;
+                            height: root.connected ? 0px : 36px;
+                            Button {
+                                text: root.busy ? "Đang kết nối..." : "Kết nối";
+                                width: 100px;
+                                enabled: !root.busy;
+                                clicked => { root.test-connection-requested(); }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 66px;
+                    background: #ffffff;
+                    border-color: #b6d8f5;
+                    border-width: 1px;
+                    border-radius: 10px;
+                    HorizontalBox {
+                        width: parent.width;
+                        height: parent.height;
+                        padding: 14px;
+                        spacing: 10px;
+                        cross-axis-alignment: center;
+                        Text { text: "Chế độ gửi"; width: 100px; color: #355b7d; vertical-alignment: center; }
+                        ComboBox {
+                            width: 180px;
+                            height: 36px;
+                            model: ["Theo mẫu", "Gửi tùy ý"];
+                            current-value <=> root.send-mode;
+                        }
+                        Text {
+                            text: root.send-mode == "Gửi tùy ý" ? "Nhập message và topic bất kỳ" : "Tạo message theo mẫu dịch vụ";
+                            color: #52718f;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.send-mode == "Gửi tùy ý";
+                    height: root.send-mode == "Gửi tùy ý" ? 450px : 0px;
+                    background: #ffffff;
+                    border-color: #b6d8f5;
+                    border-width: 1px;
+                    border-radius: 10px;
+                    VerticalBox {
+                        width: parent.width;
+                        height: parent.height;
+                        padding: 14px;
+                        spacing: 8px;
+                        HorizontalBox {
+                            height: 36px;
+                            spacing: 8px;
+                            cross-axis-alignment: center;
+                            Text { text: "Message tùy ý"; font-size: 18px; font-weight: 600; color: #123a63; }
+                            Text { horizontal-stretch: 1; }
+                        }
+                        HorizontalBox {
+                            height: 36px;
+                            spacing: 8px;
+                            cross-axis-alignment: center;
+                            Text { text: "Topic"; width: 70px; color: #355b7d; vertical-alignment: center; }
+                            LineEdit { text <=> root.manual-topic; placeholder-text: "Tên topic Kafka"; horizontal-alignment: left; }
+                        }
+                        Text { text: "Key"; height: 20px; font-size: 16px; font-weight: 600; color: #123a63; }
+                        LineEdit { height: 36px; text <=> root.manual-key; placeholder-text: "Không nhập key: Kafka tự chọn partition"; horizontal-alignment: left; }
+                        HorizontalBox {
+                            height: 36px;
+                            cross-axis-alignment: center;
+                            Text { text: "Message"; font-size: 16px; font-weight: 600; color: #123a63; }
+                            Text { horizontal-stretch: 1; }
+                            Button { text: "Sao chép"; width: 88px; clicked => { root.copy-requested(root.manual-payload); } }
+                            Button { text: "JSON Beauty"; width: 108px; clicked => { root.json-beauty-requested(); } }
+                        }
+                        TextEdit { text <=> root.manual-payload; height: 218px; }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.send-mode == "Theo mẫu";
+                    height: root.send-mode == "Theo mẫu" ? 82px : 0px;
+                    background: #ffffff;
+                    border-color: #b6d8f5;
+                    border-width: 1px;
+                    border-radius: 10px;
+                    HorizontalBox {
+                        width: parent.width;
+                        height: parent.height;
+                        padding: 14px;
+                        spacing: 10px;
+                        cross-axis-alignment: center;
+                        Text {
+                            text: "Dịch vụ";
+                            width: 64px;
+                            color: #355b7d;
+                            font-size: 16px;
+                            vertical-alignment: center;
+                        }
+                        ComboBox {
+                            width: 175px;
+                            height: 36px;
+                            model: root.services;
+                            current-value <=> root.selected-service;
+                            selected(value) => { root.service-selected(value); }
+                        }
+                        Rectangle {
+                            width: 1px;
+                            height: 32px;
+                            background: #d8e6f4;
+                        }
+                        Text {
+                            text: "Topic";
+                            width: 42px;
+                            color: #355b7d;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: root.service-topic;
+                            color: #123a63;
+                            font-size: 16px;
+                            horizontal-stretch: 1;
+                            vertical-alignment: center;
+                        }
+                        Button { text: "Sao chép"; width: 88px; clicked => { root.copy-requested(root.service-topic); } }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.send-mode == "Theo mẫu";
+                    height: root.send-mode == "Theo mẫu" ? 310px : 0px;
+                    background: #ffffff;
+                    border-color: #b6d8f5;
+                    border-width: 1px;
+                    border-radius: 10px;
+                    VerticalBox {
+                        width: parent.width;
+                        height: parent.height;
+                        padding: 14px;
+                        spacing: 9px;
+                        Text { text: "Nội dung message"; font-size: 18px; font-weight: 600; color: #123a63; }
+                        HorizontalBox {
+                            height: 36px;
+                            spacing: 8px;
+                            cross-axis-alignment: center;
+                            Text { text: "Bảng DB"; width: 88px; color: #355b7d; vertical-alignment: center; }
+                            ComboBox {
+                                height: 36px;
+                                model: root.tables;
+                                current-value <=> root.selected-table;
+                                selected(value) => { root.table-selected(value); }
+                            }
+                            Text { text: "Thao tác"; width: 60px; color: #355b7d; vertical-alignment: center; }
+                            ComboBox {
+                                height: 36px;
+                                model: ["INSERT", "UPDATE", "DELETE", "RELOAD"];
+                                current-value <=> root.action;
+                                selected(value) => { root.action-selected(value); }
+                            }
+                        }
+                        HorizontalBox {
+                            height: 36px;
+                            spacing: 8px;
+                            cross-axis-alignment: center;
+                            Text { text: "Mục tiêu"; width: 88px; color: #355b7d; vertical-alignment: center; }
+                            Text { text: root.selected-target; color: #123a63; horizontal-stretch: 1; vertical-alignment: center; }
+                            Button { text: "Sao chép"; width: 88px; clicked => { root.copy-requested(root.selected-target); } }
+                        }
+                        ScrollView {
+                            height: 145px;
+                            VerticalBox {
+                                spacing: 7px;
+                                for field[i] in root.fields : field-row := Rectangle {
+                                    property <string> error: "";
+                                    property <string> accepted-value: field.value;
+                                    height: 36px;
+                                    HorizontalBox {
+                                        width: parent.width;
+                                        height: parent.height;
+                                        spacing: 8px;
+                                        cross-axis-alignment: center;
+                                        Text { text: field.name; width: 120px; color: #355b7d; vertical-alignment: center; }
+                                        Rectangle {
+                                            height: 36px;
+                                            horizontal-stretch: 1;
+                                            border-radius: 5px;
+                                            border-width: field-row.error == "" ? 0px : 2px;
+                                            border-color: #dc2626;
+                                            if field.kind == "text" : LineEdit {
+                                                width: parent.width;
+                                                height: parent.height;
+                                                text: field.value;
+                                                placeholder-text: "Nhập " + field.name;
+                                                font-size: 16px;
+                                                horizontal-alignment: left;
+                                                edited => {
+                                                    if root.field-input-accepted(i, self.text) {
+                                                        field-row.accepted-value = self.text;
+                                                        root.field-value-changed(i, self.text);
+                                                        field-row.error = root.field-input-error-requested(i, self.text);
+                                                    } else {
+                                                        self.text = field-row.accepted-value;
+                                                        field-row.error = root.field-input-error-requested(i, field-row.accepted-value);
+                                                    }
+                                                    root.field-error-tooltip = field-row.error;
+                                                }
+                                            }
+                                            if field.kind == "select" : ComboBox {
+                                                width: parent.width;
+                                                height: parent.height;
+                                                model: field.options;
+                                                current-value: field.value;
+                                                selected(value) => {
+                                                    field-row.error = root.field-input-error-requested(i, value);
+                                                    root.field-error-tooltip = field-row.error;
+                                                    field-row.accepted-value = value;
+                                                    root.field-value-changed(i, value);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.send-mode == "Theo mẫu";
+                    height: root.send-mode == "Theo mẫu" ? 340px : 0px;
+                    background: #ede9fe;
+                    border-radius: 10px;
+                    VerticalBox {
+                        width: parent.width;
+                        height: parent.height;
+                        padding: 14px;
+                        spacing: 8px;
+                        HorizontalBox {
+                            height: 40px;
+                            Text {
+                                text: "Message sẽ gửi";
+                                height: 40px;
+                                font-size: 18px;
+                                font-weight: 600;
+                                color: #4c1d95;
+                                vertical-alignment: center;
+                            }
+                            Text { horizontal-stretch: 1; }
+                            Button { text: "Sao chép"; width: 88px; clicked => { root.copy-requested(root.preview); } }
+                        }
+                        TextEdit {
+                            text: root.preview;
+                            read-only: true;
+                            vertical-stretch: 1;
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalBox {
+            spacing: 12px;
+            Button {
+                text: root.busy ? "Đang gửi..." : "Gửi Kafka";
+                width: 128px;
+                enabled: !root.busy && root.connected;
+                clicked => { root.send-requested(); }
+            }
+            Text { text: root.status; height: 32px; color: #355b7d; wrap: word-wrap; vertical-alignment: center; }
+        }
+    }
+
+    Rectangle {
+        visible: root.field-error-tooltip != "";
+        x: 185px;
+        y: 14px;
+        width: 570px;
+        height: 38px;
+        z: 1000;
+        background: #b91c1c;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: #7f1d1d;
+        Text {
+            text: root.field-error-tooltip;
+            x: 12px;
+            width: parent.width - 24px;
+            height: parent.height;
+            color: #ffffff;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+    }
+
+    Rectangle {
+        visible: root.notice-visible;
+        width: parent.width;
+        height: parent.height;
+        background: #0b315466;
+        Rectangle {
+            width: 450px;
+            height: root.notice-success ? 205px : 230px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: #ffffff;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: root.notice-success ? #1677d2 : #f05d5e;
+            VerticalBox {
+                width: parent.width;
+                height: parent.height;
+                padding: 18px;
+                spacing: 12px;
+                HorizontalBox {
+                    height: 42px;
+                    spacing: 12px;
+                    Rectangle {
+                        width: 38px;
+                        height: 38px;
+                        border-radius: 19px;
+                        background: root.notice-success ? #dceffb : #ffe1e6;
+                        Text {
+                            text: root.notice-success ? "✓" : "!";
+                            color: root.notice-success ? #1677d2 : #d9485f;
+                            font-size: 22px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    VerticalBox {
+                        spacing: 2px;
+                        Text {
+                            text: root.notice-title;
+                            font-size: 18px;
+                            font-weight: 700;
+                            color: root.notice-success ? #1677d2 : #d9485f;
+                        }
+                        Text {
+                            text: root.notice-success ? "Kafka đã nhận message của bạn." : "Kafka chưa nhận được message.";
+                            color: #52718f;
+                        }
+                    }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: #f3f8fd;
+                    border-color: #d9e8f6;
+                    border-width: 1px;
+                    border-radius: 8px;
+                    ScrollView {
+                        width: parent.width;
+                        height: parent.height;
+                        Text { width: parent.width; text: root.notice-message; wrap: word-wrap; color: #355b7d; }
+                    }
+                }
+                HorizontalBox {
+                    height: 32px;
+                    Text { horizontal-stretch: 1; }
+                    Button {
+                        text: "Đóng";
+                        width: 70px;
+                        clicked => { root.close-notice-requested(); }
+                    }
+                }
+            }
+        }
+    }
+}

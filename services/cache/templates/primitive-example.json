@@ -1,0 +1,10 @@
+{
+  "target": "PrimitiveExample",
+  "table": "cache_primitive_examples",
+  "fields": [
+    { "name": "enabled", "kind": "select", "options": ["true", "false"], "value_type": "boolean" },
+    { "name": "retryCount", "kind": "text", "value_type": "integer", "validation": { "min": 0, "max": 99, "max_digits": 2 } },
+    { "name": "threshold", "kind": "text", "value_type": "number", "validation": { "min": 0, "max": 999.99, "max_integer_digits": 3, "max_fraction_digits": 2 } },
+    { "name": "label", "kind": "text", "validation": { "min_length": 1, "max_length": 40 } }
+  ]
+}
