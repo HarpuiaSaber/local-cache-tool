@@ -1,0 +1,6 @@
+# Rust build output
+target-nmake/
+
+# Keep release archives, but not extracted packages or executables.
+dist/*
+!dist/*.zip

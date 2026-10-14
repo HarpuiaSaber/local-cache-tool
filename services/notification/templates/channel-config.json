@@ -1,0 +1,8 @@
+{
+  "target": "ChannelConfig",
+  "table": "notification_channel_configs",
+  "fields": [
+    { "name": "channelId", "kind": "text" },
+    { "name": "eventType", "kind": "select", "options": ["CREATED", "DISABLED"] }
+  ]
+}

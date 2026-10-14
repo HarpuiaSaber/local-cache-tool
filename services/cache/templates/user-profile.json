@@ -1,0 +1,9 @@
+{
+  "target": "UserProfile",
+  "table": "cache_user_profiles",
+  "fields": [
+    { "name": "userId", "kind": "text" },
+    { "name": "displayName", "kind": "text" },
+    { "name": "status", "kind": "select", "options": ["ACTIVE", "INACTIVE"] }
+  ]
+}

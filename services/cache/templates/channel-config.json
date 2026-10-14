@@ -1,0 +1,8 @@
+{
+  "target": "ChannelConfig",
+  "table": "cache_channel_configs",
+  "fields": [
+    { "name": "code", "kind": "text" },
+    { "name": "type", "kind": "select", "options": ["FAST", "SLOW"] }
+  ]
+}
