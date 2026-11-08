@@ -18,25 +18,26 @@ The packaging script creates a ZIP under `dist/`. Copy that ZIP to another Windo
 
 ## Use
 
-The app starts with `localhost:9093` and `my-awesome-topic`. Enter a username and password from your local Kafka setup; credentials remain in memory and are not written to disk. Select a target and action. Leave **Gửi data** unchecked for `"data": null`; otherwise check the fields to include, enter or select their values, review the JSON, and click **Gửi Kafka**. The app shows the Kafka delivery result.
+The app starts with `localhost:9093` and `my-awesome-topic`. Enter a username and password from your local Kafka setup; credentials remain in memory and are not written to disk. Select a target and action, enter or select any data values, review the JSON, and click **Gửi Kafka**. Empty optional fields are omitted and produce `"data": null` when no data is entered. Required fields show a red `(*)`; when Send is clicked, each missing required field receives a red border. The app shows the Kafka delivery result.
 
 `SASL_PLAINTEXT` authenticates but does not encrypt traffic. Use only with a broker configured for that protocol.
 
 ## Add a target or form
 
-Add a `.json` file to `templates/` next to the executable, then restart the app. Each file defines one target and its available fields:
+Add a `.json` file to `services/<service>/templates/` next to the executable, then restart the app. The service directory also needs a `service.json` containing its display name and Kafka topic. Each template defines one target and its available fields:
 
 ```json
 {
   "target": "ChannelConfig",
+  "table": "channel_configs",
   "fields": [
-    { "name": "code", "kind": "text" },
+    { "name": "code", "kind": "text", "required": true },
     { "name": "type", "kind": "select", "options": ["FAST", "SLOW"] }
   ]
 }
 ```
 
-`kind` is `text` or `select`. `select` requires a nonempty `options` array. `value_type` is optional and defaults to `string`; set it to `boolean`, `integer`, or `number` when the JSON value must be a primitive rather than a string. A boolean only accepts `true` or `false`.
+`kind` is `text` or `select`. `select` requires a nonempty `options` array. `required` is optional and defaults to `false`; a required field must contain a non-whitespace value when sending, regardless of its `value_type`. `value_type` is optional and defaults to `string`; set it to `boolean`, `integer`, or `number` when the JSON value must be a primitive rather than a string. A boolean only accepts `true` or `false`.
 
 Use the optional `validation` object to constrain a value. Strings support `min_length` and `max_length`; integers support `min`, `max`, and `max_digits`; numbers support `min`, `max`, `max_integer_digits`, and `max_fraction_digits`. For example, this accepts values from `0` through `999.99`, with at most three digits before and two digits after the decimal point:
 

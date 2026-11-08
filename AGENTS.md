@@ -10,17 +10,17 @@ This is a Windows 64-bit desktop app for composing JSON cache-update messages an
 - `src/main.rs`: UI state, preview updates, and the background send thread. Do not block the UI thread with Kafka calls.
 - `src/message.rs`: template loading, validation, JSON preview, strict message creation, and unit tests.
 - `src/kafka.rs`: Kafka producer settings and delivery result handling.
-- `templates/*.json`: one form per target. Add new targets or fields here when code changes are unnecessary.
+- `services/<service>/templates/*.json`: one form per target for a service. Add new targets or fields here when code changes are unnecessary.
 - `docker-compose.local.yml`: local Kafka, SCRAM users, topic, and Kafka UI. It advertises `localhost:9093`, which works for clients on the same machine.
 - `build-windows.bat` and `package.ps1`: Windows Release build and ZIP packaging.
 
 ## Message and form rules
 
 - Message fields are `target` (string), `action` (`INSERT`, `UPDATE`, `DELETE`, `RELOAD`), `data` (object or `null`), and `changedAt` (local timestamp with UTC offset).
-- Unchecked data fields are omitted. If data is disabled or no fields are selected, `data` is `null`.
-- A template field has `name` and `kind`: `text` for manual entry or `select` with a nonempty `options` array. Values sent in `data` are strings.
-- The preview may show an empty selected text value while the user types. Sending must still reject empty required values. Preserve that distinction when changing validation.
-- Templates are read from the `templates` directory beside the executable at startup. Package the directory with the `.exe`.
+- Empty optional data fields are omitted. If no values are entered, `data` is `null`.
+- A template field has `name` and `kind`: `text` for manual entry or `select` with a nonempty `options` array. `required` defaults to `false`; when true, sending rejects missing or whitespace-only values for every value type. `value_type` defaults to string and can emit boolean or numeric JSON primitives.
+- The preview may show an empty selected text value while the user types. Sending must still reject empty required values and mark every missing required field with a red border; required labels show a red `(*)`. Preserve that distinction when changing validation.
+- Services are read from the `services` directory beside the executable at startup. Each service contains `service.json` and a `templates` directory; package the full `services` directory with the `.exe`.
 
 ## Kafka and local environment
 
