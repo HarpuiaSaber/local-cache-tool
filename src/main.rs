@@ -7,7 +7,7 @@ use chrono::Local;
 use kafka::Connection;
 use message::{
     Action, FieldKind, FieldValue, Service, Template, beautify_json, build_message, load_services,
-    preview_message, validate_field_entry, validate_field_input,
+    missing_required_fields, preview_message, validate_field_entry, validate_field_input,
 };
 use slint::{ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
@@ -22,6 +22,7 @@ struct AppState {
     selected_target: usize,
     action: Action,
     fields: Vec<FieldValue>,
+    required_errors: Vec<bool>,
 }
 
 impl AppState {
@@ -31,12 +32,14 @@ impl AppState {
             .and_then(|service| service.templates.first())
             .map(default_fields)
             .unwrap_or_default();
+        let required_errors = vec![false; fields.len()];
         Self {
             services,
             selected_service: 0,
             selected_target: 0,
             action: Action::Reload,
             fields,
+            required_errors,
         }
     }
 
@@ -57,6 +60,7 @@ impl AppState {
                 .first()
                 .map(default_fields)
                 .unwrap_or_default();
+            self.required_errors = vec![false; self.fields.len()];
         }
     }
 }
@@ -92,11 +96,14 @@ fn update_fields(ui: &AppWindow, state: &AppState) {
                 .fields
                 .iter()
                 .zip(&state.fields)
-                .map(|(definition, value)| {
+                .enumerate()
+                .map(|(index, (definition, value))| {
                     let mut options = vec![SharedString::new()];
                     options.extend(definition.options.iter().cloned().map(SharedString::from));
                     UiField {
                         name: definition.name.clone().into(),
+                        required: definition.required,
+                        required_error: state.required_errors.get(index).copied().unwrap_or(false),
                         kind: match definition.kind {
                             FieldKind::Text => "text".into(),
                             FieldKind::Select => "select".into(),
@@ -314,6 +321,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }) {
                 state.selected_target = index;
                 state.fields = state.template().map(default_fields).unwrap_or_default();
+                state.required_errors = vec![false; state.fields.len()];
                 ui.set_selected_target(
                     state
                         .template()
@@ -353,8 +361,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.on_field_value_changed(move |index, value| {
             let Some(ui) = weak.upgrade() else { return };
             let mut state = state.borrow_mut();
+            let required = state
+                .template()
+                .and_then(|template| template.fields.get(index as usize))
+                .is_some_and(|definition| definition.required);
             if let Some(field) = state.fields.get_mut(index as usize) {
                 field.value = value.to_string();
+                if let Some(required_error) = state.required_errors.get_mut(index as usize) {
+                    *required_error = required && value.trim().is_empty();
+                }
+                update_fields(&ui, &state);
                 update_preview(&ui, &state);
             }
         });
@@ -438,11 +454,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 (connection_from_ui(&ui, topic), payload, key, key_status)
             } else {
                 let payload = {
-                    let state = state.borrow();
-                    let Some(template) = state.template() else {
+                    let mut state = state.borrow_mut();
+                    let missing = if let Some(template) = state.template() {
+                        missing_required_fields(template, &state.fields)
+                            .into_iter()
+                            .map(str::to_owned)
+                            .collect::<Vec<_>>()
+                    } else {
                         ui.set_status("Chưa có target hợp lệ".into());
                         return;
                     };
+                    state.required_errors = state
+                        .template()
+                        .expect("template was checked above")
+                        .fields
+                        .iter()
+                        .map(|definition| missing.iter().any(|name| name == &definition.name))
+                        .collect();
+                    if !missing.is_empty() {
+                        update_fields(&ui, &state);
+                        ui.set_status(format!("Cần nhập giá trị cho {}", missing.join(", ")).into());
+                        return;
+                    }
+                    let template = state.template().expect("template was checked above");
                     build_message(
                         template,
                         state.action,

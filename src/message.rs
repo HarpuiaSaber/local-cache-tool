@@ -34,6 +34,8 @@ pub struct FieldDef {
     #[serde(default)]
     pub value_type: ValueType,
     #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
     pub validation: FieldValidation,
 }
 
@@ -327,6 +329,21 @@ pub fn preview_message(
     render_message(template, action, fields, changed_at, false)
 }
 
+pub fn missing_required_fields<'a>(template: &'a Template, fields: &[FieldValue]) -> Vec<&'a str> {
+    template
+        .fields
+        .iter()
+        .filter(|definition| {
+            definition.required
+                && fields
+                    .iter()
+                    .find(|field| field.name == definition.name)
+                    .is_none_or(|field| field.value.trim().is_empty())
+        })
+        .map(|definition| definition.name.as_str())
+        .collect()
+}
+
 pub fn validate_field_value(definition: &FieldDef, value: &str) -> Result<(), String> {
     if value.trim().is_empty() {
         return Ok(());
@@ -457,6 +474,12 @@ fn render_message(
     changed_at: DateTime<FixedOffset>,
     require_values: bool,
 ) -> Result<String, String> {
+    if require_values {
+        if let Some(field_name) = missing_required_fields(template, fields).first() {
+            return Err(format!("Cần nhập giá trị cho {field_name}"));
+        }
+    }
+
     let mut data = Map::new();
     for field in fields.iter().filter(|field| !field.value.trim().is_empty()) {
         let definition = template
@@ -464,9 +487,6 @@ fn render_message(
             .iter()
             .find(|definition| definition.name == field.name)
             .ok_or_else(|| format!("Trường không có trong form: {}", field.name))?;
-        if require_values && field.value.trim().is_empty() {
-            return Err(format!("Cần nhập giá trị cho {}", field.name));
-        }
         validate_field_value(definition, &field.value)?;
         data.insert(
             field.name.clone(),
@@ -779,6 +799,80 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn rejects_an_empty_required_string_when_sending() {
+        let template: Template = serde_json::from_str(
+            r#"{
+                "target":"ValidationExample",
+                "table":"validation_examples",
+                "fields":[{"name":"label","kind":"text","required":true,"validation":{"min_length":1}}]
+            }"#,
+        )
+        .unwrap();
+
+        let error =
+            build_message(&template, Action::Update, &[field("label", "   ")], time()).unwrap_err();
+
+        assert!(error.contains("label"));
+    }
+
+    #[test]
+    fn identifies_each_empty_required_field() {
+        let template: Template = serde_json::from_str(
+            r#"{
+                "target":"ValidationExample",
+                "table":"validation_examples",
+                "fields":[
+                    {"name":"label","kind":"text","required":true},
+                    {"name":"count","kind":"text","value_type":"integer","required":true},
+                    {"name":"note","kind":"text"}
+                ]
+            }"#,
+        )
+        .unwrap();
+        let fields = [
+            field("label", " "),
+            field("count", ""),
+            field("note", "optional"),
+        ];
+
+        assert_eq!(
+            missing_required_fields(&template, &fields),
+            vec!["label", "count"]
+        );
+    }
+
+    #[test]
+    fn rejects_an_empty_required_number_when_sending() {
+        let template: Template = serde_json::from_str(
+            r#"{
+                "target":"ValidationExample",
+                "table":"validation_examples",
+                "fields":[{"name":"count","kind":"text","value_type":"integer","required":true,"validation":{"min":1}}]
+            }"#,
+        )
+        .unwrap();
+
+        let error =
+            build_message(&template, Action::Update, &[field("count", "")], time()).unwrap_err();
+
+        assert!(error.contains("count"));
+    }
+
+    #[test]
+    fn permits_an_empty_required_field_in_preview() {
+        let template: Template = serde_json::from_str(
+            r#"{
+                "target":"ValidationExample",
+                "table":"validation_examples",
+                "fields":[{"name":"label","kind":"text","required":true}]
+            }"#,
+        )
+        .unwrap();
+
+        assert!(preview_message(&template, Action::Update, &[field("label", "")], time()).is_ok());
     }
 
     #[test]

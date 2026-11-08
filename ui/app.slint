@@ -2,6 +2,8 @@ import { Button, ComboBox, LineEdit, ScrollView, TextEdit, VerticalBox, Horizont
 
 export struct UiField {
     name: string,
+    required: bool,
+    required-error: bool,
     kind: string,
     value: string,
     options: [string],
@@ -315,12 +317,13 @@ export component AppWindow inherits Window {
                                         height: parent.height;
                                         spacing: 8px;
                                         cross-axis-alignment: center;
-                                        Text { text: field.name; width: 120px; color: #355b7d; vertical-alignment: center; }
+                                        Text { text: field.name; width: 102px; color: #355b7d; vertical-alignment: center; }
+                                        Text { visible: field.required; text: "(*)"; width: 18px; color: #dc2626; vertical-alignment: center; }
                                         Rectangle {
                                             height: 36px;
                                             horizontal-stretch: 1;
                                             border-radius: 5px;
-                                            border-width: field-row.error == "" ? 0px : 2px;
+                                            border-width: field-row.error == "" && !field.required-error ? 0px : 2px;
                                             border-color: #dc2626;
                                             if field.kind == "text" : LineEdit {
                                                 width: parent.width;
